@@ -1,6 +1,13 @@
 import json
 
 
+def template_to_BIO(template):
+    markup = []
+    for token in template.split():
+        if token[0] == token[-1] == "$":
+            pass
+
+
 class NLUDataGenerator:
     def __init__(self, path_to_template, path_to_dict):
         with open(path_to_dict, "wt") as f_dict:
