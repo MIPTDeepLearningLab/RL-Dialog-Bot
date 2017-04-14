@@ -1,5 +1,6 @@
 import json
 import random
+from copy import copy
 
 
 def template_to_BIO(template):
@@ -31,10 +32,18 @@ class NLUDataGenerator:
     def __next__(self):
         batch = random.sample(self.templates, self.batch_size)
         filled_batch = []
-        for t, m, r in batch:
+        for t, m, role in batch:
             input_ = []
             target = []
             for i in range(len(m)):
+                target.append(m[i])
                 if m[i] == 'O':
                     input_.append(t[i])
-                    target.append(m[i])
+                else:  # m[i] is B-smth
+                    tag = m[i].split("-")[1]
+                    filler = random.choice(self.dict[tag]).split()
+                    input_.append(filler[0])
+                    for f in filler[1:]:
+                        target.append("I-" + tag)
+                        input_.append(f)
+            filled_batch.append((copy(input_), copy(target)))
