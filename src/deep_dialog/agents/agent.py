@@ -88,5 +88,3 @@ class Agent:
             agent_action['act_slot_value_response']['nl'] = ""
             user_nlg_sentence = self.nlg_model.convert_diaact_to_nl(agent_action['act_slot_value_response'], 'agt')
             agent_action['act_slot_response']['nl'] = user_nlg_sentence
-
-        return user_nlg_sentence
