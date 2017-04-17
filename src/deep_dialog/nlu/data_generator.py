@@ -1,6 +1,7 @@
 import json
 import random
 from copy import copy
+import numpy as np
 
 
 def template_to_BIO(template):
@@ -14,12 +15,18 @@ def template_to_BIO(template):
 
 
 class NLUDataGenerator:
-    def __init__(self, path_to_template, path_to_dict, batch_size=32):
+    def __init__(self, path_to_template, path_to_dict, path_to_slot, seq_len=64, batch_size=32):
         self.batch_size = batch_size
+        self.seq_len = seq_len
         with open(path_to_dict, "rt") as f_dict:
             self.dict = json.load(f_dict)
         with open(path_to_template, "rt") as f_tmpl:
             templates = json.load(f_tmpl)
+        self.slots = []
+        with open(path_to_slot, "rt") as f_slot:
+            for line in f_slot:
+                self.slots.append(line.strip())
+        self.tag_count = len(self.slots) + 2
 
         self.templates = []
         for t in templates:
@@ -47,3 +54,17 @@ class NLUDataGenerator:
                         target.append("I-" + tag)
                         input_.append(f)
             filled_batch.append((copy(input_), copy(target)))
+        return filled_batch
+
+    def digitize_batch(self, batch):
+        dbatch = []
+        for row in batch:
+            drow = np.zeros((self.seq_len,))
+            for i, token in enumerate(row):
+                if token == "O":
+                    drow[i] = 1
+                else:
+                    tag, slot = token.split("_")
+                    drow[i] = 2 + self.slots.index(slot) * 2 + 0 if tag == "B" else 1
+            dbatch.append(drow)
+        return np.stack(dbatch)
