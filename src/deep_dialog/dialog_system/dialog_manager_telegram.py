@@ -32,7 +32,6 @@ class TelegramDialogManager(DialogManagerBase):
         ########################################################################
         self.state_tracker.update(agent_action=agent_action)
 
-        # agent_ans = self.agent.add_nl_to_action(agent_action)
         self.agent.add_nl_to_action(agent_action)
         agent_ans = agent_action['act_slot_response']['nl']
 
