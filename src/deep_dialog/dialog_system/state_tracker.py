@@ -110,14 +110,14 @@ class StateTracker:
 
             ### delete from self.current_slots['request_slots'][slot] slot which user requested;
             ### and also updating request/inform/propose slots;
-            for slot in agent_action_values['inform_slots'].keys():
+            for slot in agent_action_values['inform_slots']:
                 self.current_slots['proposed_slots'][slot] = agent_action_values['inform_slots'][slot]
                 self.current_slots['inform_slots'][slot] = agent_action_values['inform_slots'][slot]
-                if slot in self.current_slots['request_slots'].keys():
+                if slot in self.current_slots['request_slots']:
                     del self.current_slots['request_slots'][slot]
 
             #### add slots, which agent requests to the self.current_slots['agent_request_slots'][slot]
-            for slot in agent_action_values['request_slots'].keys():
+            for slot in agent_action_values['request_slots']:
                 if slot not in self.current_slots['agent_request_slots']:
                     self.current_slots['agent_request_slots'][slot] = "UNK"
 
@@ -132,12 +132,12 @@ class StateTracker:
             #   Update the current slots
             ####################################################################
 
-            for slot in user_action['inform_slots'].keys():
+            for slot in user_action['inform_slots']:
                 self.current_slots['inform_slots'][slot] = user_action['inform_slots'][slot]
-                if slot in self.current_slots['request_slots'].keys():
+                if slot in self.current_slots['request_slots']:
                     del self.current_slots['request_slots'][slot]
 
-            for slot in user_action['request_slots'].keys():
+            for slot in user_action['request_slots']:
                 if slot not in self.current_slots['request_slots']:
                     self.current_slots['request_slots'][slot] = "UNK"
 
