@@ -50,7 +50,6 @@ class SeqToSeq:
             
         return grads
 
-
     def costFunc(self, ds, batch, params):
         """ Cost function, returns cost and gradients for model """
 
@@ -100,7 +99,6 @@ class SeqToSeq:
         out['cost'] = {'reg_cost' : reg_cost, 'loss_cost' : loss_cost, 'total_cost' : loss_cost + reg_cost}
         out['grads'] = grads
         return out
-
 
     def singleBatch(self, ds, batch, params):
         """ A single batch """
