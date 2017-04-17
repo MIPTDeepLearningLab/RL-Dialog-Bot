@@ -29,12 +29,25 @@ class NLUDataGenerator:
         self.tag_count = len(self.slots) + 2
 
         self.templates = []
+        self.vocab = set()
         for t in templates:
             agent_line = t["nl"]["agt"].split()
             self.templates.append((agent_line, template_to_BIO(agent_line), "agt"))
 
             user_line = t["nl"]["usr"].split()
             self.templates.append((user_line, template_to_BIO(user_line), "usr"))
+
+            for w in agent_line + user_line:
+                if w[0] == w[-1] == "$":
+                    continue
+                self.vocab.add(w)
+
+            for tag in self.dict:
+                for filling in self.dict[tag]:
+                    for w in filling.split():
+                        self.vocab.add(w)
+
+            self.vocab = dict(zip(self.vocab, range(len(self.vocab))))
 
     def __next__(self):
         batch = random.sample(self.templates, self.batch_size)
