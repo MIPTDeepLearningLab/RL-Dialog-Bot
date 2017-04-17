@@ -11,8 +11,6 @@ from emoji import emojize
 import random
 import pickle
 import json
-# from deep_dialog.agents import AgentDQN
-# from deep_dialog.agents import agent_baselines
 from deep_dialog.dialog_system.dialog_manager_telegram import TelegramDialogManager
 from deep_dialog.dialog_system.kb_helper import KBHelper
 from deep_dialog.dialog_system.state_tracker import StateTracker
@@ -105,7 +103,6 @@ if cmd_input:
         msg = input()
         episode_over, agent_ans = dia_manager.next_turn(msg)
         turn_count+=1
-        # bot.send_message(msg, agent_ans+' ' + get_random_emoji(1))
         print("turn #{}: {}".format(turn_count, agent_ans))
         if episode_over:
             turn_count = 0
