@@ -1,4 +1,3 @@
-
 from fuzzywuzzy import fuzz
 from deep_dialog import dialog_config
 from collections import defaultdict
@@ -28,14 +27,14 @@ class KBHelper:
         current_slots = current_slots['inform_slots']  ## just already filled slots
 
         filled_slots = {}
-        if 'taskcomplete' in inform_slots_to_be_filled.keys():
+        if 'taskcomplete' in inform_slots_to_be_filled:
             filled_slots.update(current_slots)  ## TODO: check to be sure if it's ok
 
         #### TODO: very strange part of code begins here:
 
-        for slot in inform_slots_to_be_filled.keys():
+        for slot in inform_slots_to_be_filled:
             if slot == 'numberofpeople':
-                if slot in current_slots.keys():
+                if slot in current_slots:
                     filled_slots[slot] = current_slots[slot]
                 else:
                     filled_slots[slot] = 'a lot of'  ## very bad to use this trick, but... :(
@@ -87,8 +86,8 @@ class KBHelper:
             return self.movie_dictionary
 
         ### starting looking for the suitable records:
-        for id_ in self.movie_dictionary.keys():
-            kb_keys = self.movie_dictionary[id_].keys()
+        for id_ in self.movie_dictionary:
+            kb_keys = self.movie_dictionary[id_]
 
             ### checking if all constraits is available
             ### for the current film id:
@@ -119,7 +118,7 @@ class KBHelper:
         Return the count statistics for each constraint in inform_slots """
 
         inform_slots = current_slots['inform_slots']
-        kb_results = {key: 0 for key in inform_slots.keys()}
+        kb_results = {key: 0 for key in inform_slots}
         kb_results['matching_all_constraints'] = 0
 
         query_idx_keys = frozenset(inform_slots.items())
@@ -128,9 +127,9 @@ class KBHelper:
         if len(cached_kb_slot_ret) > 0:
             return cached_kb_slot_ret
 
-        for movie_id in self.movie_dictionary.keys():
+        for movie_id in self.movie_dictionary:
             all_slots_match = 1
-            for slot in inform_slots.keys():
+            for slot in inform_slots:
                 if slot == 'ticket' or inform_slots[slot] == dialog_config.I_DO_NOT_CARE:
                     continue
 
@@ -151,9 +150,9 @@ class KBHelper:
 
         avail_kb_results = self.available_results_from_kb(current_slots)
         return_suggest_slot_vals = {}
-        for slot in request_slots.keys():
+        for slot in request_slots:
             avail_values_dict = self.available_slot_values(slot, avail_kb_results)
-            values_counts = [(v, avail_values_dict[v]) for v in avail_values_dict.keys()]
+            values_counts = [(v, avail_values_dict[v]) for v in avail_values_dict]
 
             if len(values_counts) > 0:
                 return_suggest_slot_vals[slot] = []
