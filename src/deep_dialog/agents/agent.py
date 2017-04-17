@@ -19,8 +19,8 @@ class Agent:
         self.movie_dict = movie_dict
         self.act_set = act_set
         self.slot_set = slot_set
-        self.act_cardinality = len(list(act_set.keys())) if act_set is not None else None
-        self.slot_cardinality = len(list(slot_set.keys())) if slot_set is not None else None
+        self.act_cardinality = len(act_set) if act_set is not None else None
+        self.slot_cardinality = len(slot_set) if slot_set is not None else None
 
         self.epsilon = params['epsilon']
         self.agent_run_mode = params['agent_run_mode']
@@ -35,7 +35,7 @@ class Agent:
         self.current_action['request_slots'] = {}
         self.current_action['turn'] = -1
 
-    def state_to_action(self, state=None):
+    def state_to_action(self, state):
         """ Take the current state and return an action according to the current exploration/exploitation policy
 
         We define the agents flexibly so that they can either operate on act_slot representations or act_slot_value representations.
