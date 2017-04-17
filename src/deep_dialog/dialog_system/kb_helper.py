@@ -40,8 +40,8 @@ class KBHelper:
                     filled_slots[slot] = 'a lot of'  ## very bad to use this trick, but... :(
 
             if slot == 'ticket' or slot == 'taskcomplete':
-                filled_slots[slot] = dialog_config.TICKET_AVAILABLE if len(
-                    kb_results) > 0 else dialog_config.NO_VALUE_MATCH
+                filled_slots[slot] = dialog_config.TICKET_AVAILABLE if \
+                    len(kb_results) > 0 else dialog_config.NO_VALUE_MATCH
                 continue
 
             if slot == 'closing':
@@ -52,8 +52,7 @@ class KBHelper:
             ####################################################################
 
             values_counts = self.available_slot_values(slot, kb_results).items()
-            filled_slots[slot] = max(values_counts, key=lambda x: x[1], default=(dialog_config.NO_VALUE_MATCH, 1))[
-                0]
+            filled_slots[slot] = max(values_counts, key=lambda x: x[1], default=(dialog_config.NO_VALUE_MATCH, 1))[0]
 
         return filled_slots
 
