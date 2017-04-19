@@ -8,7 +8,7 @@ def template_to_BIO(template):
     markup = []
     for token in template:
         if token[0] == token[-1] == "$":
-            markup.append("B-" + token.split("_")[0][1:])
+            markup.append("B-" + token[1:-1])
         else:
             markup.append("O")
     return markup
@@ -30,29 +30,30 @@ class NLUDataGenerator:
 
         self.templates = []
         self.vocab = set()
-        for t in templates:
-            agent_line = t["nl"]["agt"].split()
-            self.templates.append((agent_line, template_to_BIO(agent_line), "agt"))
+        for intention in templates:
+            for t in templates[intention]:
+                agent_line = t["nl"]["agt"].split()
+                self.templates.append((agent_line, template_to_BIO(agent_line), intention))
 
-            user_line = t["nl"]["usr"].split()
-            self.templates.append((user_line, template_to_BIO(user_line), "usr"))
+                user_line = t["nl"]["usr"].split()
+                self.templates.append((user_line, template_to_BIO(user_line), intention))
 
-            for w in agent_line + user_line:
-                if w[0] == w[-1] == "$":
-                    continue
-                self.vocab.add(w)
+                for w in agent_line + user_line:
+                    if w[0] == w[-1] == "$":
+                        continue
+                    self.vocab.add(w)
 
-            for tag in self.dict:
-                for filling in self.dict[tag]:
-                    for w in filling.split():
-                        self.vocab.add(w)
+                for tag in self.dict:
+                    for filling in self.dict[tag]:
+                        for w in filling.split():
+                            self.vocab.add(w)
 
-            self.vocab = dict(zip(self.vocab, range(len(self.vocab))))
+        self.vocab = dict(zip(self.vocab, range(1, len(self.vocab) + 1)))
 
     def __next__(self):
         batch = random.sample(self.templates, self.batch_size)
         filled_batch = []
-        for t, m, role in batch:
+        for t, m, intention in batch:  # TODO: add intention target generation
             input_ = []
             target = []
             for i in range(len(m)):
@@ -69,7 +70,7 @@ class NLUDataGenerator:
             filled_batch.append((copy(input_), copy(target)))
         return filled_batch
 
-    def digitize_batch(self, batch):
+    def digitize_batch(self, batch):  # TODO: digitize words too
         dbatch = []
         for row in batch:
             drow = np.zeros((self.seq_len,))
@@ -77,7 +78,7 @@ class NLUDataGenerator:
                 if token == "O":
                     drow[i] = 1
                 else:
-                    tag, slot = token.split("_")
+                    tag, slot = token.split("-")
                     drow[i] = 2 + self.slots.index(slot) * 2 + 0 if tag == "B" else 1
             dbatch.append(drow)
         return np.stack(dbatch)

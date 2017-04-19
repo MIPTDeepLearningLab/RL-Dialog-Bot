@@ -24,6 +24,7 @@ class TFSeq2Seq(SeqToSeq):
 
         self.input_data = tf.placeholder(tf.int32, [args.batch_size, args.seq_length])
         self.targets = tf.placeholder(tf.int32, [args.batch_size, args.seq_length])
+        self.intention_targets = tf.placeholder(tf.int32, [args.batch_size, 1])
         self.initial_state = cell.zero_state(args.batch_size, tf.float32)
 
         with tf.variable_scope('rnnlm'):
@@ -37,10 +38,19 @@ class TFSeq2Seq(SeqToSeq):
         self.probs = tf.nn.softmax(self.logits)
         loss = seq2seq.sequence_loss_by_example([self.logits],
                                                 [tf.reshape(self.targets, [-1])],
-                                                [tf.ones([args.batch_size * args.seq_length])])
+                                                [tf.sign(tf.reshape(self.targets, [-1]))])
         self.final_state = last_state
 
-        self.cost = tf.reduce_sum(loss) / args.batch_size / args.seq_length
+        self.intentions = linear(last_state, output_size=args.act_count)
+        self.intentions = tf.sigmoid(self.intentions)
+        self.intention_probs = tf.nn.softmax(self.intentions)
+
+        loss2 = seq2seq.sequence_loss_by_example([self.intentions],
+                                                 [tf.reshape(self.intention_targets, [-1])],
+                                                 [tf.ones(args.batch_size)])
+
+        self.cost = tf.reduce_sum(loss) / args.batch_size / args.seq_length \
+                    + loss2 / args.batch_size
 
         self.lr = tf.Variable(0.0, trainable=False)
         tvars = tf.trainable_variables()
