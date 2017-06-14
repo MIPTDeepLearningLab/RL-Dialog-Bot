@@ -21,7 +21,7 @@ import random
 import numpy as np
 
 from src.deep_dialog import dialog_config
-from src.deep_dialog.qlearning import DQN
+from src.deep_dialog.qlearning import DoubleDQN
 from .agent import Agent
 
 
@@ -36,31 +36,23 @@ class AgentDQN(Agent):
         self.feasible_actions = dialog_config.feasible_actions
         self.num_actions = len(self.feasible_actions)
 
+        self.experience_replay_pool = []
         self.epsilon = params['epsilon']
         self.agent_run_mode = params['agent_run_mode']
         self.agent_act_level = params['agent_act_level']
-        self.experience_replay_pool = []  # experience replay pool <s_t, a_t, r_t, s_t+1>
-
+        self.warm_start = params['warm_start']
         self.experience_replay_pool_size = params.get('experience_replay_pool_size', 1000)
-        self.hidden_size = params.get('dqn_hidden_size', 60)
+        self.hidden_size = params.get('dqn_hidden_size', 80)
         self.gamma = params.get('gamma', 0.9)
         self.predict_mode = params.get('predict_mode', False)
-        self.warm_start = params.get('warm_start', 0)
 
         self.max_turn = params['max_turn'] + 4
         self.state_dimension = 2 * self.act_cardinality + 7 * self.slot_cardinality + 3 + self.max_turn
 
-        self.dqn = DQN(self.state_dimension, self.hidden_size, self.num_actions)
-        self.clone_dqn = copy.deepcopy(self.dqn)
-
-        self.cur_bellman_err = 0
-
-        # Prediction Mode: load trained DQN model
-        if params['trained_model_path'] is not None:
-            self.dqn.model = copy.deepcopy(self.load_trained_DQN(params['trained_model_path']))
-            self.clone_dqn = copy.deepcopy(self.dqn)
-            self.predict_mode = True
-            self.warm_start = 2
+        if 'trained_model_path' not in params or params['trained_model_path'] is None:
+            self.dqn = DoubleDQN(n_actions=len(self.feasible_actions), n_features=self.state_dimension, hidden_size=self.hidden_size)
+        else:
+            self.dqn = DoubleDQN.load(params['trained_model_path'])
 
     def initialize_episode(self):
         """ Initialize a new episode. This function is called every time a new episode is run. """
@@ -75,7 +67,36 @@ class AgentDQN(Agent):
         self.representation = self.prepare_state_representation(state)
         self.action = self.run_policy(self.representation)
         act_slot_response = copy.deepcopy(self.feasible_actions[self.action])
-        return {'act_slot_response': act_slot_response, 'act_slot_value_response': None}
+        return {'act_slot_response': act_slot_response, 'act_slot_value_response': None, 'act_index': self.action}
+
+    def register_experience_replay_tuple(self, s, a, r, s_, episode_over):
+        s = self.prepare_state_representation(s)
+        a = self.action
+        s_ = self.prepare_state_representation(s_)
+
+        training_example = np.hstack((s, [a, r], s_))
+        if not self.predict_mode:  # Training Mode
+            if self.warm_start == 1:
+                self.experience_replay_pool.append(training_example)
+        else:  # Prediction Mode
+            self.experience_replay_pool.append(training_example)
+
+    def train(self, batch_size=1, num_batches=100):
+        """ Train DQN with experience replay """
+
+        for iter_batch in range(num_batches):
+            self.cur_bellman_err = 0
+            iter_count = min(200, len(self.experience_replay_pool) // batch_size)
+            for _ in range(iter_count):
+                batch = [random.choice(self.experience_replay_pool) for __ in range(batch_size)]
+                batch_struct = self.dqn.learn(batch)
+                self.cur_bellman_err += batch_struct['cost']['total_cost']
+
+            print("cur bellman err %.4f, experience replay pool %s"
+                  % (float(self.cur_bellman_err) / len(self.experience_replay_pool), len(self.experience_replay_pool)))
+
+        self.dqn.replace_target_params()
+        self.experience_replay_pool = self.experience_replay_pool[-2000:]
 
     def prepare_state_representation(self, state):
         """ Create the representation for each state """
@@ -163,7 +184,7 @@ class AgentDQN(Agent):
         self.final_representation = np.hstack(
             [user_act_rep, user_inform_slots_rep, user_request_slots_rep, agent_act_rep, agent_inform_slots_rep,
              agent_request_slots_rep, current_slots_rep, turn_rep, turn_onehot_rep, kb_binary_rep, kb_count_rep])
-        return self.final_representation
+        return self.final_representation.flatten()
 
     def run_policy(self, representation):
         """ epsilon-greedy policy """
@@ -174,9 +195,10 @@ class AgentDQN(Agent):
             if self.warm_start == 1:
                 if len(self.experience_replay_pool) > self.experience_replay_pool_size:
                     self.warm_start = 2
+
                 return self.rule_policy()
             else:
-                return self.dqn.predict(representation, {}, predict_model=True)
+                return self.dqn.choose_action(representation)
 
     def rule_policy(self):
         """ Rule Policy """
@@ -208,59 +230,3 @@ class AgentDQN(Agent):
             print(act_slot_response)
             raise Exception("action index not found")
         return None
-
-    def register_experience_replay_tuple(self, s_t, a_t, reward, s_tplus1, episode_over):
-        """ Register feedback from the environment, to be stored as future training data """
-
-        state_t_rep = self.prepare_state_representation(s_t)
-        action_t = self.action
-        reward_t = reward
-        state_tplus1_rep = self.prepare_state_representation(s_tplus1)
-        training_example = (state_t_rep, action_t, reward_t, state_tplus1_rep, episode_over)
-
-        if not self.predict_mode:  # Training Mode
-            if self.warm_start == 1:
-                self.experience_replay_pool.append(training_example)
-        else:  # Prediction Mode
-            self.experience_replay_pool.append(training_example)
-
-    def train(self, batch_size=1, num_batches=100):
-        """ Train DQN with experience replay """
-
-        for iter_batch in range(num_batches):
-            self.cur_bellman_err = 0
-            for _ in range(len(self.experience_replay_pool) // batch_size):
-                batch = [random.choice(self.experience_replay_pool) for __ in range(batch_size)]
-                batch_struct = self.dqn.singleBatch(batch, {'gamma': self.gamma}, self.clone_dqn)
-                self.cur_bellman_err += batch_struct['cost']['total_cost']
-
-            print("cur bellman err %.4f, experience replay pool %s"
-                  % (float(self.cur_bellman_err) / len(self.experience_replay_pool), len(self.experience_replay_pool)))
-
-    ################################################################################
-    #    Debug Functions
-    ################################################################################
-    def save_experience_replay_to_file(self, path):
-        """ Save the experience replay pool to a file """
-
-        try:
-            with open(path, "wb") as f:
-                pickle.dump(self.experience_replay_pool, f)
-            print('saved model in %s' % path)
-        except Exception as e:
-            print('Error: Writing model fails: %s' % path)
-            print(e)
-
-    def load_experience_replay_from_file(self, path):
-        """ Load the experience replay pool from a file"""
-
-        self.experience_replay_pool = pickle.load(open(path, 'rb'))
-
-    def load_trained_DQN(self, path):
-        """ Load the trained DQN from a file """
-
-        trained_file = pickle.load(open(path, 'rb'))
-        model = trained_file['model']
-
-        print("trained DQN Parameters:", json.dumps(trained_file['params'], indent=2))
-        return model

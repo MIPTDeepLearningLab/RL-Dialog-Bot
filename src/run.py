@@ -4,37 +4,37 @@ Created on May 22, 2016
 This should be a simple minimalist run file. It's only responsibility should be to parse the arguments (which agent,
 user simulator to use) and launch a dialog simulation.
 
-Rule-agent: python run.py --agt 6 --usr 1 --max_turn 40 --episodes 150 --movie_kb_path ./deep_dialog/data/movie_kb.1k.p
+Rule-agent: python run.py --agt 6 --usr 1 --max_turn 40 --episodes 150 --movie_kb_path ./deep_dialog/data/movie_kb.1k.json
 --run_mode 2
 
 movie_kb:
-movie_kb.1k.p: 94% success rate
-movie_kb.v2.p: 36% success rate
+movie_kb.1k.json: 94% success rate
+movie_kb.v2.json: 36% success rate
 
 user goal files:
-first turn: user_goals_first_turn_template.v2.p
-all turns: user_goals_all_turns_template.p
-user_goals_first_turn_template.part.movie.v1.p: a subset of user goal. [Please use this one, the upper bound success
+first turn: user_goals_first_turn_template.v2.json
+all turns: user_goals_all_turns_template.json
+user_goals_first_turn_template.part.movie.v1.json: a subset of user goal. [Please use this one, the upper bound success
 rate on movie_kb.1k.json is 0.9765.]
 
 Commands:
-Rule: python run.py --agt 5 --usr 1 --max_turn 40 --episodes 150 --movie_kb_path ./deep_dialog/data/movie_kb.1k.p
---goal_file_path ./deep_dialog/data/user_goals_first_turn_template.part.movie.v1.p --intent_err_prob 0.00
+Rule: python run.py --agt 5 --usr 1 --max_turn 40 --episodes 150 --movie_kb_path ./deep_dialog/data/movie_kb.1k.json
+--goal_file_path ./deep_dialog/data/user_goals_first_turn_template.part.movie.v1.json --intent_err_prob 0.00
 --slot_err_prob 0.00 --episodes 500 --act_level 1 --run_mode 1
 
 Training:
-RL: python run.py --agt 9 --usr 1 --max_turn 40 --movie_kb_path ./deep_dialog/data/movie_kb.1k.p --dqn_hidden_size 80
+RL: python run.py --agt 9 --usr 1 --max_turn 40 --movie_kb_path ./deep_dialog/data/movie_kb.1k.json --dqn_hidden_size 80
 --experience_replay_pool_size 1000 --episodes 500 --simulation_epoch_size 100 --write_model_dir
 ./deep_dialog/checkpoints/rl_agent --run_mode 3 --act_level 0 --slot_err_prob 0.05 --intent_err_prob 0.00
---batch_size 16 --goal_file_path ./deep_dialog/data/user_goals_first_turn_template.part.movie.v1.p --warm_start 1
+--batch_size 16 --goal_file_path ./deep_dialog/data/user_goals_first_turn_template.part.movie.v1.json --warm_start 1
 --warm_start_epochs 120
 
 Predict:
-RL: python run.py --agt 9 --usr 1 --max_turn 40 --movie_kb_path ./deep_dialog/data/movie_kb.1k.p --dqn_hidden_size 80
+RL: python run.py --agt 9 --usr 1 --max_turn 40 --movie_kb_path ./deep_dialog/data/movie_kb.1k.json --dqn_hidden_size 80
 --experience_replay_pool_size 1000 --episodes 300 --simulation_epoch_size 100 --write_model_dir
 ./deep_dialog/checkpoints/rl_agent --slot_err_prob 0.00 --intent_err_prob 0.00 --batch_size 16 --goal_file_path
-./deep_dialog/data/user_goals_first_turn_template.part.movie.v1.p --episodes 200 --trained_model_path
-./deep_dialog/checkpoints/rl_agent/agt_9_22_30_0.37000.p --run_mode 3
+./deep_dialog/data/user_goals_first_turn_template.part.movie.v1.json --episodes 200 --trained_model_path
+./deep_dialog/checkpoints/rl_agent/agt_9_0.79.tf-0 --run_mode 3 --train 0
 
 @author: xiul, t-zalipt
 """
@@ -72,16 +72,16 @@ def load_file(file_name):
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
 
-    parser.add_argument('--dict_path', dest='dict_path', type=str, default='./deep_dialog/data/dicts.v3.p',
+    parser.add_argument('--dict_path', dest='dict_path', type=str, default='./deep_dialog/data/dicts.v3.json',
                         help='path to the .json dictionary file')
-    parser.add_argument('--movie_kb_path', dest='movie_kb_path', type=str, default='./deep_dialog/data/movie_kb.1k.p',
+    parser.add_argument('--movie_kb_path', dest='movie_kb_path', type=str, default='./deep_dialog/data/movie_kb.1k.json',
                         help='path to the movie kb .json file')
     parser.add_argument('--act_set', dest='act_set', type=str, default='./deep_dialog/data/dia_acts.txt',
                         help='path to dia act set; none for loading from labeled file')
     parser.add_argument('--slot_set', dest='slot_set', type=str, default='./deep_dialog/data/slot_set.txt',
                         help='path to slot set; none for loading from labeled file')
     parser.add_argument('--goal_file_path', dest='goal_file_path', type=str,
-                        default='./deep_dialog/data/user_goals_first_turn_template.part.movie.v1.p',
+                        default='./deep_dialog/data/user_goals_first_turn_template.part.movie.v1.json',
                         help='a list of user goals')
     parser.add_argument('--diaact_nl_pairs', dest='diaact_nl_pairs', type=str,
                         default='./deep_dialog/data/dia_act_nl_pairs.v6.json',
@@ -145,6 +145,9 @@ if __name__ == "__main__":
     parser.add_argument('--save_check_point', dest='save_check_point', type=int, default=10,
                         help='number of epochs for saving model')
 
+    parser.add_argument('--train', dest='train', type=int, default=1,
+                        help='0 - predict, 1 - train')
+
     parser.add_argument('--success_rate_threshold', dest='success_rate_threshold', type=float, default=0.3,
                         help='the threshold for success rate')
 
@@ -159,6 +162,8 @@ num_episodes = params['episodes']
 
 agt = params['agt']
 usr = params['usr']
+
+is_training_mode = params['train']
 
 dict_path = params['dict_path']
 goal_file_path = params['goal_file_path']
@@ -282,7 +287,7 @@ save_check_point = params['save_check_point']
 """ Best Model and Performance Records """
 best_model = {}
 best_res = {'success_rate': 0, 'ave_reward': float('-inf'), 'ave_turns': float('inf'), 'epoch': 0}
-best_model['model'] = copy.deepcopy(agent)
+best_model['model'] = agent
 best_res['success_rate'] = 0
 
 performance_records = {'success_rate': {}, 'ave_turns': {}, 'ave_reward': {}}
@@ -291,13 +296,13 @@ performance_records = {'success_rate': {}, 'ave_turns': {}, 'ave_reward': {}}
 def save_model(path, agt, success_rate, agent, best_epoch, cur_epoch):
     """ Save model """
 
-    filename = 'agt_%s_%s_%s_%.5f.p' % (agt, best_epoch, cur_epoch, success_rate)
+    filename = 'agt_%s_%.2f.tf' % (agt, success_rate)
     filepath = os.path.join(path, filename)
     checkpoint = {}
-    if agt == 9: checkpoint['model'] = copy.deepcopy(agent.dqn.model)
+    if agt == 9: checkpoint['model'] = agent.dqn
     checkpoint['params'] = params
     try:
-        pickle.dump(checkpoint, open(filepath, "wb"))
+        agent.dqn.save(filepath)
         print('saved model in %s' % (filepath,))
     except Exception as e:
         print('Error: Writing model fails: %s' % (filepath,))
@@ -310,7 +315,7 @@ def save_performance_records(path, agt, records):
     filename = 'agt_%s_performance_records.json' % (agt)
     filepath = os.path.join(path, filename)
     try:
-        json.dump(records, open(filepath, "wb"))
+        json.dump(records, open(filepath, "w"))
         print('saved model in %s' % (filepath,))
     except Exception as e:
         print('Error: Writing model fails: %s' % (filepath,))
@@ -372,9 +377,9 @@ def warm_start_simulation():
             break
 
     agent.warm_start = 2
-    res['success_rate'] = float(successes) / simulation_epoch_size
-    res['ave_reward'] = float(cumulative_reward) / simulation_epoch_size
-    res['ave_turns'] = float(cumulative_turns) / simulation_epoch_size
+    res['success_rate'] = float(successes) / warm_start_epochs
+    res['ave_reward'] = float(cumulative_reward) / warm_start_epochs
+    res['ave_turns'] = float(cumulative_turns) / warm_start_epochs
     print("Warm_Start %s epochs, success rate %s, ave reward %s, ave turns %s"
           % (episode + 1, res['success_rate'], res['ave_reward'], res['ave_turns']))
     print("Current experience replay buffer size %s" % (len(agent.experience_replay_pool)))
@@ -389,6 +394,9 @@ def run_episodes(count, status):
         print('warm_start starting ...')
         warm_start_simulation()
         print('warm_start finished, start RL training ...')
+
+    if agt == 9 and params['trained_model_path']:
+        agent.warm_start = 2
 
     for episode in range(count):
         print("Episode: %s" % episode)
@@ -409,7 +417,7 @@ def run_episodes(count, status):
                 cumulative_turns += dialog_manager.state_tracker.turn_count
 
         # simulation
-        if agt == 9 and not params['trained_model_path']:
+        if agt ==9 and is_training_mode:
             agent.predict_mode = True
             simulation_res = simulation_epoch(simulation_epoch_size)
 
@@ -418,18 +426,21 @@ def run_episodes(count, status):
             performance_records['ave_reward'][episode] = simulation_res['ave_reward']
 
             if simulation_res['success_rate'] >= best_res['success_rate']:
-                if simulation_res['success_rate'] >= success_rate_threshold:  # threshold = 0.30
-                    agent.experience_replay_pool = []
-                    simulation_epoch(simulation_epoch_size)
+                if simulation_res['success_rate'] >= success_rate_threshold:  # threshold = 0.3
+                   #agent.experience_replay_pool = []
+                   dialog_manager.current_reward_function = dialog_manager.reward_function
+                   simulation_epoch(simulation_epoch_size)
 
             if simulation_res['success_rate'] > best_res['success_rate']:
-                best_model['model'] = copy.deepcopy(agent)
+                best_model['model'] = agent
                 best_res['success_rate'] = simulation_res['success_rate']
                 best_res['ave_reward'] = simulation_res['ave_reward']
                 best_res['ave_turns'] = simulation_res['ave_turns']
                 best_res['epoch'] = episode
 
-            agent.clone_dqn = copy.deepcopy(agent.dqn)
+                save_model(params['write_model_dir'], agt, best_res['success_rate'], best_model['model'],
+                           best_res['epoch'], episode)
+
             agent.train(batch_size, 1)
             agent.predict_mode = False
 
@@ -438,8 +449,6 @@ def run_episodes(count, status):
                      performance_records['ave_turns'][episode], best_res['success_rate']))
             if episode % save_check_point == 0 \
                     and not params['trained_model_path']:  # save the model every 10 episodes
-                save_model(params['write_model_dir'], agt, best_res['success_rate'], best_model['model'],
-                           best_res['epoch'], episode)
                 save_performance_records(params['write_model_dir'], agt, performance_records)
 
         print("Progress: %s / %s, Success rate: %s / %s Avg reward: %.2f Avg turns: %.2f"
@@ -451,8 +460,6 @@ def run_episodes(count, status):
     status['count'] += count
 
     if agt == 9 and not params['trained_model_path']:
-        save_model(params['write_model_dir'], agt, float(successes) / count, best_model['model'], best_res['epoch'],
-                   count)
         save_performance_records(params['write_model_dir'], agt, performance_records)
 
 

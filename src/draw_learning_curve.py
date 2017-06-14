@@ -14,11 +14,15 @@ import matplotlib.pyplot as plt
 def read_performance_records(path):
     """ load the performance score (.json) file """
 
-    data = json.load(open(path, 'rb'))
+    data = json.load(open(path, 'r'))
+    numbers = {'x': [], 'success_rate': [], 'ave_turns': [], 'ave_rewards': []}
     for key in data['success_rate'].keys():
         if int(key) > -1:
+            numbers['x'].append(key)
             print("%s\t%s\t%s\t%s" % (key, data['success_rate'][key], data['ave_turns'][key], data['ave_reward'][key]))
+            numbers['success_rate'].append(data['success_rate'][key])
 
+    return numbers
 
 def load_performance_file(path):
     """ load the performance score (.json) file """
@@ -54,9 +58,10 @@ def main(params):
 
     if cmd == 0:
         numbers = load_performance_file(params['result_file'])
-        draw_learning_curve(numbers)
     elif cmd == 1:
-        read_performance_records(params['result_file'])
+        numbers = read_performance_records(params['result_file'])
+
+    draw_learning_curve(numbers)
 
 
 if __name__ == "__main__":
@@ -65,7 +70,7 @@ if __name__ == "__main__":
     parser.add_argument('--cmd', dest='cmd', type=int, default=1, help='cmd')
 
     parser.add_argument('--result_file', dest='result_file', type=str,
-                        default='./deep_dialog/checkpoints/rl_agent/11142016/noe2e/agt_9_performance_records.json',
+                        default='./deep_dialog/checkpoints/rl_agent/agt_9_performance_records.json',
                         help='path to the result file')
 
     args = parser.parse_args()

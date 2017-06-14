@@ -1,2 +1,3 @@
 *.pyc
 .idea/
+src/telegram_bot/config.json

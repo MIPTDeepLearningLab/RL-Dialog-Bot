@@ -1,282 +1,155 @@
 """
-Created on Jun 18, 2016
+The double DQN based on this paper: https://arxiv.org/abs/1509.06461
 
-@author: xiul
+Based on: https://morvanzhou.github.io/tutorials/
+
+Using:
+Tensorflow: 1.0
+gym: 0.8.0
 """
 
-from .utils import *
+import numpy as np
+import tensorflow as tf
+import pickle
 
+np.random.seed(1)
+tf.set_random_seed(1)
 
-class DQN:
-    def __init__(self, input_size, hidden_size, output_size):
-        self.model = {}
-        # input-hidden
-        self.model['Wxh'] = initWeight(input_size, hidden_size)
-        self.model['bxh'] = np.zeros((1, hidden_size))
+class DoubleDQN:
+    def __init__(self,**kwargs):
+        self.kwargs = kwargs
 
-        # hidden-output
-        self.model['Wd'] = initWeight(hidden_size, output_size) * 0.1
-        self.model['bd'] = np.zeros((1, output_size))
+        self.hidden_size = kwargs.get('hidden_size', 80)
+        self.n_actions = kwargs.get('n_actions')
+        self.n_features = kwargs.get('n_features')
+        self.lr = kwargs.get('learning_rate', 0.001)
+        self.gamma = kwargs.get('reward_decay', 0.999)
+        self.epsilon_max = kwargs.get('e_greedy', 0.9)
+        self.batch_size = kwargs.get('batch_size', 16)
+        self.epsilon_increment = kwargs.get('e_greedy_increment')
+        #self.epsilon = 0 if kwargs.get('e_greedy_increment', False) else self.epsilon_max
+        self.epsilon = 1
 
-        self.update = ['Wxh', 'bxh', 'Wd', 'bd']
-        self.regularize = ['Wxh', 'Wd']
+        self.double_q = kwargs.get('double_q', True)    # decide to use double q or not
 
-        self.step_cache = {}
-
-    def getStruct(self):
-        return {'model': self.model, 'update': self.update, 'regularize': self.regularize}
-
-    def fwdPass(self, Xs, params, **kwargs):
-        """Activation Function: Sigmoid, or tanh, or ReLu"""
-        predict_mode = kwargs.get('predict_mode', False)
-        active_func = params.get('activation_func', 'relu')
-
-        # input layer to hidden layer
-        Wxh = self.model['Wxh']
-        bxh = self.model['bxh']
-        Xsh = Xs.dot(Wxh) + bxh
-
-        hidden_size = self.model['Wd'].shape[0]  # size of hidden layer
-        H = np.zeros((1, hidden_size))  # hidden layer representation
-
-        if active_func == 'sigmoid':
-            H = 1 / (1 + np.exp(-Xsh))
-        elif active_func == 'tanh':
-            H = np.tanh(Xsh)
-        elif active_func == 'relu':  # ReLU
-            H = np.maximum(Xsh, 0)
-        else:  # no activation function
-            H = Xsh
-
-        # decoder at the end; hidden layer to output layer
-        Wd = self.model['Wd']
-        bd = self.model['bd']
-        Y = H.dot(Wd) + bd
-
-        # cache the values in forward pass, we expect to do a backward pass
-        cache = {}
-        if not predict_mode:
-            cache['Wxh'] = Wxh
-            cache['Wd'] = Wd
-            cache['Xs'] = Xs
-            cache['Xsh'] = Xsh
-            cache['H'] = H
-
-            cache['bxh'] = bxh
-            cache['bd'] = bd
-            cache['activation_func'] = active_func
-
-            cache['Y'] = Y
-
-        return Y, cache
-
-    def bwdPass(self, dY, cache):
-        Wd = cache['Wd']
-        H = cache['H']
-        Xs = cache['Xs']
-        Xsh = cache['Xsh']
-        Wxh = cache['Wxh']
-
-        active_func = cache['activation_func']
-        n, d = H.shape
-
-        dH = dY.dot(Wd.transpose())
-        # backprop the decoder
-        dWd = H.transpose().dot(dY)
-        dbd = np.sum(dY, axis=0, keepdims=True)
-
-        dXsh = np.zeros(Xsh.shape)
-        dXs = np.zeros(Xs.shape)
-
-        if active_func == 'sigmoid':
-            dH = (H - H ** 2) * dH
-        elif active_func == 'tanh':
-            dH = (1 - H ** 2) * dH
-        elif active_func == 'relu':
-            dH = (H > 0) * dH  # backprop ReLU
+        sess = kwargs.get('sess')
+        self._build_net()
+        if sess is None:
+            self.sess = tf.Session()
+            self.sess.run(tf.global_variables_initializer())
         else:
-            dH = dH
+            self.sess = sess
+        if kwargs.get('output_graph'):
+            tf.summary.FileWriter("logs/", self.sess.graph)
+        self.cost_his = []
 
-        # backprop to the input-hidden connection
-        dWxh = Xs.transpose().dot(dH)
-        dbxh = np.sum(dH, axis=0, keepdims=True)
+    def _build_net(self):
+        def build_layers(s, c_names, n_l1, w_initializer, b_initializer):
+            with tf.variable_scope('l1'):
+                w1 = tf.get_variable('w1', [self.n_features, n_l1], initializer=w_initializer, collections=c_names)
+                b1 = tf.get_variable('b1', [1, n_l1], initializer=b_initializer, collections=c_names)
+                l1 = tf.nn.relu(tf.matmul(s, w1) + b1)
 
-        # backprop to the input
-        dXsh = dH
-        dXs = dXsh.dot(Wxh.transpose())
+            with tf.variable_scope('l2'):
+                w2 = tf.get_variable('w2', [n_l1, self.n_actions], initializer=w_initializer, collections=c_names)
+                b2 = tf.get_variable('b2', [1, self.n_actions], initializer=b_initializer, collections=c_names)
+                out = tf.matmul(l1, w2) + b2
+            return out
+        # ------------------ build evaluate_net ------------------
+        self.s = tf.placeholder(tf.float32, [None, self.n_features], name='s')  # input
+        self.q_target = tf.placeholder(tf.float32, [None, self.n_actions], name='Q_target')  # for calculating loss
 
-        return {'Wd': dWd, 'bd': dbd, 'Wxh': dWxh, 'bxh': dbxh}
+        with tf.variable_scope('eval_net'):
+            c_names, n_l1, w_initializer, b_initializer = \
+                ['eval_net_params', tf.GraphKeys.GLOBAL_VARIABLES], self.hidden_size, \
+                tf.random_normal_initializer(0., 0.3), tf.constant_initializer(0.1)  # config of layers
 
+            self.q_eval = build_layers(self.s, c_names, n_l1, w_initializer, b_initializer)
 
-    def batchForward(self, batch, params, predict_mode=False):
-        """batch Forward & Backward Pass"""
-        caches = []
-        Ys = []
-        for i, x in enumerate(batch):
-            Xs = np.array([x['cur_states']], dtype=float)
+        with tf.variable_scope('loss'):
+            self.loss = tf.reduce_mean(tf.squared_difference(self.q_target, self.q_eval))
+        with tf.variable_scope('train'):
+            self._train_op = tf.train.RMSPropOptimizer(self.lr).minimize(self.loss)
 
-            Y, out_cache = self.fwdPass(Xs, params, predict_mode=predict_mode)
-            caches.append(out_cache)
-            Ys.append(Y)
+        # ------------------ build target_net ------------------
+        self.s_ = tf.placeholder(tf.float32, [None, self.n_features], name='s_')    # input
+        with tf.variable_scope('target_net'):
+            c_names = ['target_net_params', tf.GraphKeys.GLOBAL_VARIABLES]
 
-        # back up information for efficient backprop
-        cache = {}
-        if not predict_mode:
-            cache['caches'] = caches
+            self.q_next = build_layers(self.s_, c_names, n_l1, w_initializer, b_initializer)
 
-        return Ys, cache
+    def choose_action(self, observation):
+        if len(observation.shape)!=2:
+            observation = observation[np.newaxis, :]
 
-    def batchDoubleForward(self, batch, params, clone_dqn, predict_mode=False):
-        caches = []
-        Ys = []
-        tYs = []
+        actions_value = self.sess.run(self.q_eval, feed_dict={self.s: observation})
+        action = np.argmax(actions_value)
 
-        for i, x in enumerate(batch):
-            Xs = x[0]
-            Y, out_cache = self.fwdPass(Xs, params, predict_mode=predict_mode)
-            caches.append(out_cache)
-            Ys.append(Y)
+        if not hasattr(self, 'q'):  # record action value it gets
+            self.q = []
+            self.running_q = 0
+        self.running_q = self.running_q*0.99 + 0.01 * np.max(actions_value)
+        self.q.append(self.running_q)
 
-            tXs = x[3]
-            tY, t_cache = clone_dqn.fwdPass(tXs, params, predict_mode=False)
+        if np.random.uniform() > self.epsilon:  # choosing action
+            action = np.random.randint(0, self.n_actions)
+        return action
 
-            tYs.append(tY)
+    def replace_target_params(self):
+        t_params = tf.get_collection('target_net_params')
+        e_params = tf.get_collection('eval_net_params')
+        self.sess.run([tf.assign(t, e) for t, e in zip(t_params, e_params)])
 
-        # back up information for efficient backprop
-        cache = {}
-        if not predict_mode:
-            cache['caches'] = caches
+        print('\ntarget_params_replaced\n')
 
-        return Ys, cache, tYs
+    def learn(self, batch_memory):
+        batch_memory = np.array(batch_memory)
+        q_next, q_eval4next = self.sess.run(
+            [self.q_next, self.q_eval],
+            feed_dict={self.s_: batch_memory[:, -self.n_features:],    # next observation
+                       self.s: batch_memory[:, -self.n_features:]})    # next observation
+        q_eval = self.sess.run(self.q_eval, {self.s: batch_memory[:, :self.n_features]})
 
-    def batchBackward(self, dY, cache):
-        caches = cache['caches']
+        q_target = q_eval.copy()
 
-        grads = {}
-        for i in range(len(caches)):
-            single_cache = caches[i]
-            local_grads = self.bwdPass(dY[i], single_cache)
-            mergeDicts(grads, local_grads)  # add up the gradients wrt model parameters
+        batch_index = np.arange(self.batch_size, dtype=np.int32)
+        eval_act_index = batch_memory[:, self.n_features].astype(int)
+        reward = batch_memory[:, self.n_features + 1]
 
-        return grads
+        if self.double_q:
+            max_act4next = np.argmax(q_eval4next, axis=1)        # the action that brings the highest value is evaluated by q_eval
+            selected_q_next = q_next[batch_index, max_act4next]  # Double DQN, select q_next depending on above actions
+        else:
+            selected_q_next = np.max(q_next, axis=1)    # the natural DQN
 
-    def costFunc(self, batch, params, clone_dqn):
-        """ cost function, returns cost and gradients for model """
+        q_target[batch_index, eval_act_index] = reward + self.gamma * selected_q_next
 
-        regc = params.get('reg_cost', 1e-3)
-        gamma = params.get('gamma', 0.9)
+        _, self.cost = self.sess.run([self._train_op, self.loss],
+                                     feed_dict={self.s: batch_memory[:, :self.n_features],
+                                                self.q_target: q_target})
+        self.cost_his.append(self.cost)
 
-        # batch forward
-        Ys, caches, tYs = self.batchDoubleForward(batch, params, clone_dqn, predict_mode=False)
+        self.epsilon = self.epsilon + self.epsilon_increment if self.epsilon < self.epsilon_max else self.epsilon_max
+        return {'cost': {'total_cost': self.cost}}
 
-        loss_cost = 0.0
-        dYs = []
-        for i, x in enumerate(batch):
-            Y = Ys[i]
-            nY = tYs[i]
+    def save(self, filepath):
+        self.kwargs['sess'] = None
+        pickle.dump(self.kwargs, open(filepath + '.params', 'wb'))
 
-            action = np.array(x[1], dtype=int)
-            reward = np.array(x[2], dtype=float)
+        saver = tf.train.Saver(max_to_keep=1)
+        # Save model weights to disk
+        save_path= saver.save(self.sess, filepath, global_step=0)
+        print('Save path = {}'.format(save_path))
 
-            n_action = np.nanargmax(nY[0])
-            max_next_y = nY[0][n_action]
+    @classmethod
+    def load(self, filepath):
+        sess = tf.Session()
+        sess.run(tf.global_variables_initializer())
 
-            eposide_terminate = x[4]
+        constructor_params = pickle.load(open(filepath.split('.tf')[0]+'.tf.params', 'rb'))
+        constructor_params['sess'] = sess
+        result = DoubleDQN(**constructor_params)
+        saver = tf.train.Saver()
+        sess = saver.restore(sess, filepath)
+        return result
 
-            target_y = reward
-            if eposide_terminate != True: target_y += gamma * max_next_y
-
-            pred_y = Y[0][action]
-
-            nY = np.zeros(nY.shape)
-            nY[0][action] = target_y
-            Y = np.zeros(Y.shape)
-            Y[0][action] = pred_y
-
-            # Cost Function
-            loss_cost += (target_y - pred_y) ** 2
-
-            dY = -(nY - Y)
-            # dY = np.minimum(dY, 1)
-            # dY = np.maximum(dY, -1)
-            dYs.append(dY)
-
-        # backprop the RNN
-        grads = self.batchBackward(dYs, caches)
-
-        # add L2 regularization cost and gradients
-        reg_cost = 0.0
-        if regc > 0:
-            for p in self.regularize:
-                mat = self.model[p]
-                reg_cost += 0.5 * regc * np.sum(mat * mat)
-                grads[p] += regc * mat
-
-        # normalize the cost and gradient by the batch size
-        batch_size = len(batch)
-        reg_cost /= batch_size
-        loss_cost /= batch_size
-        for k in grads: grads[k] /= batch_size
-
-        out = {}
-        out['cost'] = {'reg_cost': reg_cost, 'loss_cost': loss_cost, 'total_cost': loss_cost + reg_cost}
-        out['grads'] = grads
-        return out
-
-    """ A single batch """
-
-    def singleBatch(self, batch, params, clone_dqn):
-        learning_rate = params.get('learning_rate', 0.001)
-        decay_rate = params.get('decay_rate', 0.999)
-        momentum = params.get('momentum', 0.1)
-        grad_clip = params.get('grad_clip', -1e-3)
-        smooth_eps = params.get('smooth_eps', 1e-8)
-        sdg_type = params.get('sdgtype', 'rmsprop')
-        activation_func = params.get('activation_func', 'relu')
-
-        for u in self.update:
-            if not u in self.step_cache:
-                self.step_cache[u] = np.zeros(self.model[u].shape)
-
-        cg = self.costFunc(batch, params, clone_dqn)
-
-        cost = cg['cost']
-        grads = cg['grads']
-
-        # clip gradients if needed
-        if activation_func.lower() == 'relu':
-            if grad_clip > 0:
-                for p in self.update:
-                    if p in grads:
-                        grads[p] = np.minimum(grads[p], grad_clip)
-                        grads[p] = np.maximum(grads[p], -grad_clip)
-
-        # perform parameter update
-        for p in self.update:
-            if p in grads:
-                if sdg_type == 'vanilla':
-                    if momentum > 0:
-                        dx = momentum * self.step_cache[p] - learning_rate * grads[p]
-                    else:
-                        dx = -learning_rate * grads[p]
-                    self.step_cache[p] = dx
-                elif sdg_type == 'rmsprop':
-                    self.step_cache[p] = self.step_cache[p] * decay_rate + (1.0 - decay_rate) * grads[p] ** 2
-                    dx = -(learning_rate * grads[p]) / np.sqrt(self.step_cache[p] + smooth_eps)
-                elif sdg_type == 'adgrad':
-                    self.step_cache[p] += grads[p] ** 2
-                    dx = -(learning_rate * grads[p]) / np.sqrt(self.step_cache[p] + smooth_eps)
-
-                self.model[p] += dx
-
-        out = {}
-        out['cost'] = cost
-        return out
-
-    """ prediction """
-
-    def predict(self, Xs, params, **kwargs):
-        Ys, caches = self.fwdPass(Xs, params, predict_model=True)
-        pred_action = np.argmax(Ys)
-
-        return pred_action

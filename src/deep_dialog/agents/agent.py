@@ -4,7 +4,7 @@ Created on May 17, 2016
 @author: xiul, t-zalipt
 """
 
-from deep_dialog import dialog_config
+from src.deep_dialog import dialog_config
 
 
 class Agent:
