@@ -14,7 +14,7 @@ import matplotlib.pyplot as plt
 def read_performance_records(path):
     """ load the performance score (.json) file """
 
-    data = json.load(open(path, 'r'))
+    data = json.load(open(path, 'rt'))
     numbers = {'x': [], 'success_rate': [], 'ave_turns': [], 'ave_rewards': []}
     for key in data['success_rate'].keys():
         if int(key) > -1:

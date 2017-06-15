@@ -27,7 +27,6 @@ class DoubleDQN:
         self.epsilon_max = kwargs.get('e_greedy', 0.9)
         self.batch_size = kwargs.get('batch_size', 16)
         self.epsilon_increment = kwargs.get('e_greedy_increment')
-        #self.epsilon = 0 if kwargs.get('e_greedy_increment', False) else self.epsilon_max
         self.epsilon = 1
 
         self.double_q = kwargs.get('double_q', True)    # decide to use double q or not
